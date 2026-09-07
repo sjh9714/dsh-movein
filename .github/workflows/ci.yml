@@ -7,6 +7,21 @@ on:
 permissions:
   contents: read
 
+env:
+  # Review toolchain upgrades explicitly; an unpinned pnpm major broke dlx
+  # before the plugin tests could start. Never opt out of age/build policy.
+  PNPM_VERSION: '12.3.4'
+  pnpm_config_minimum_release_age_strict: 'true'
+  pnpm_config_strict_dep_builds: 'true'
+  # These five lifecycle scripts belong to the official DSH host graph.
+  # Deliberate shell word splitting below supplies one flag per package.
+  DSH_DLX_BUILD_FLAGS: >-
+    --allow-build=@deepseek-ai/dsh-subprocess-local
+    --allow-build=@google/genai
+    --allow-build=koffi
+    --allow-build=node-pty
+    --allow-build=protobufjs
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -18,6 +33,7 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm test
+      - run: node test/ci-policy.test.mjs
       - run: node plugin/test.mjs
       - name: documented first-migration example
         run: node demo/verify-first-migration.mjs
@@ -101,16 +117,16 @@ jobs:
           node-version: 22
           package-manager-cache: false
       - run: npm ci
-      - run: npm install -g pnpm
+      - run: npm install -g "pnpm@$PNPM_VERSION"
       - name: install dsh and this plugin into a scratch profile
         run: |
           export DSH_HOME="$RUNNER_TEMP/dsh-home"
           npm pack --silent
-          pnpm dlx @deepseek-ai/dsh plugin --profile web add "$PWD"/dsh-movein-*.tgz
+          pnpm dlx $DSH_DLX_BUILD_FLAGS @deepseek-ai/dsh plugin --profile web add "$PWD"/dsh-movein-*.tgz
           echo "DSH_HOME=$DSH_HOME" >> "$GITHUB_ENV"
       - name: composed config contains the plugin and dsh boots the tree
         run: |
-          pnpm dlx @deepseek-ai/dsh --profile web --dump-config > composed.txt
+          pnpm dlx $DSH_DLX_BUILD_FLAGS @deepseek-ai/dsh --profile web --dump-config > composed.txt
           grep -q "dsh-movein" composed.txt
       - name: OpenCode environment placeholders boot in DSH
         env:
@@ -120,9 +136,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/opencode-project"
           node -e "require('node:fs').writeFileSync(process.env.OPENCODE_CONFIG, JSON.stringify({ mcp: { probe: { type: 'local', command: ['{env:MCP_BIN}', '--token={env:MCP_TOKEN}'] } } }))"
-          pnpm dlx @deepseek-ai/dsh plugin --profile web add @deepseek-ai/dsh-mcp-client
+          pnpm dlx $DSH_DLX_BUILD_FLAGS @deepseek-ai/dsh plugin --profile web add @deepseek-ai/dsh-mcp-client
           node bin/cli.mjs "$RUNNER_TEMP/opencode-project" --from opencode --apply
-          pnpm dlx @deepseek-ai/dsh --profile web --dump-config | grep -q "process.env.MCP_TOKEN"
+          pnpm dlx $DSH_DLX_BUILD_FLAGS @deepseek-ai/dsh --profile web --dump-config | grep -q "process.env.MCP_TOKEN"
       - name: cli scan runs against a synthetic Claude home
         run: |
           export HOME="$RUNNER_TEMP/fake-home"
@@ -144,7 +160,7 @@ jobs:
         with:
           node-version: 22.19.0
           package-manager-cache: false
-      - run: npm install -g pnpm
+      - run: npm install -g "pnpm@$PNPM_VERSION"
       - name: install, start, and uninstall in a disposable profile
         env:
           DSH_VERSION: ${{ matrix.dsh }}
@@ -154,11 +170,11 @@ jobs:
           TARBALL="$RUNNER_TEMP/dsh-movein-permissions-0.2.7.tgz"
           test -f "$TARBALL"
 
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" plugin --profile web add "$TARBALL"
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" --profile web --dump-config > "$RUNNER_TEMP/composed-before.yml"
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" plugin --profile web add "$TARBALL"
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" --profile web --dump-config > "$RUNNER_TEMP/composed-before.yml"
           grep -q "dsh-movein-permissions" "$RUNNER_TEMP/composed-before.yml"
 
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" web --no-open --host 127.0.0.1 --port 3108 > "$RUNNER_TEMP/dsh-web.log" 2>&1 &
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" web --no-open --host 127.0.0.1 --port 3108 > "$RUNNER_TEMP/dsh-web.log" 2>&1 &
           DSH_PID=$!
           cleanup() {
             if kill -0 "$DSH_PID" 2>/dev/null; then
@@ -176,7 +192,7 @@ jobs:
               break
             fi
             if ! kill -0 "$DSH_PID" 2>/dev/null; then
-              cat "$RUNNER_TEMP/dsh-web.log"
+              sed -E 's/(token=)[^[:space:]]+/\1[redacted]/' "$RUNNER_TEMP/dsh-web.log"
               exit 1
             fi
             sleep 1
@@ -188,8 +204,8 @@ jobs:
 
           cleanup
           trap - EXIT
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" plugin --profile web remove dsh-movein-permissions
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" --profile web --dump-config > "$RUNNER_TEMP/composed-after.yml"
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" plugin --profile web remove dsh-movein-permissions
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" --profile web --dump-config > "$RUNNER_TEMP/composed-after.yml"
           if grep -q "dsh-movein-permissions" "$RUNNER_TEMP/composed-after.yml"; then
             exit 1
           fi
@@ -209,7 +225,7 @@ jobs:
           node-version: 22.19.0
           package-manager-cache: false
       - run: npm ci
-      - run: npm install -g pnpm
+      - run: npm install -g "pnpm@$PNPM_VERSION"
       - name: install, start, and uninstall in a disposable profile
         env:
           DSH_VERSION: ${{ matrix.dsh }}
@@ -219,11 +235,11 @@ jobs:
           TARBALL="$RUNNER_TEMP/dsh-movein-0.13.8.tgz"
           test -f "$TARBALL"
 
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" plugin --profile web add "$TARBALL"
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" --profile web --dump-config > "$RUNNER_TEMP/composed-before.yml"
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" plugin --profile web add "$TARBALL"
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" --profile web --dump-config > "$RUNNER_TEMP/composed-before.yml"
           grep -q "dsh-movein" "$RUNNER_TEMP/composed-before.yml"
 
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" web --no-open --host 127.0.0.1 --port 3108 > "$RUNNER_TEMP/dsh-web.log" 2>&1 &
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" web --no-open --host 127.0.0.1 --port 3108 > "$RUNNER_TEMP/dsh-web.log" 2>&1 &
           DSH_PID=$!
           cleanup() {
             if kill -0 "$DSH_PID" 2>/dev/null; then
@@ -241,7 +257,7 @@ jobs:
               break
             fi
             if ! kill -0 "$DSH_PID" 2>/dev/null; then
-              cat "$RUNNER_TEMP/dsh-web.log"
+              sed -E 's/(token=)[^[:space:]]+/\1[redacted]/' "$RUNNER_TEMP/dsh-web.log"
               exit 1
             fi
             sleep 1
@@ -258,8 +274,8 @@ jobs:
           if [ "$DSH_VERSION" = "0.1.2-rc.1" ]; then
             node bin/cli.mjs doctor --live
           fi
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" plugin --profile web remove dsh-movein
-          pnpm dlx "@deepseek-ai/dsh@$DSH_VERSION" --profile web --dump-config > "$RUNNER_TEMP/composed-after.yml"
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" plugin --profile web remove dsh-movein
+          pnpm dlx $DSH_DLX_BUILD_FLAGS "@deepseek-ai/dsh@$DSH_VERSION" --profile web --dump-config > "$RUNNER_TEMP/composed-after.yml"
           if grep -q "dsh-movein" "$RUNNER_TEMP/composed-after.yml"; then
             exit 1
           fi
