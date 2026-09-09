@@ -65,7 +65,7 @@ After a successful CLI apply, a human TTY asks `Star dsh-movein? (Enter = Yes) [
 
 ## Compatibility
 
-The DSH plugin is tested in a fresh `web` profile against every currently supported Store release:
+These DSH releases passed installation, authenticated Web startup, and removal in a fresh Linux `web` profile. This checks host/plugin loading, not model tasks, migrated-hook enforcement, or Windows Minimal TUI acceptance.
 
 | DSH release | Install | Web start | Uninstall |
 | --- | --- | --- | --- |
@@ -76,6 +76,11 @@ The DSH plugin is tested in a fresh `web` profile against every currently suppor
 | `0.1.2-alpha.4` | Compatible | Compatible | Compatible |
 | `0.1.2-alpha.5` | Compatible | Compatible | Compatible |
 | `0.1.2-rc.1` | Compatible | Compatible | Compatible |
+| `0.1.3-alpha.2` | Compatible | Compatible | Compatible |
+
+DSH `0.1.3-alpha.2` adds the native `fs-ext` dependency for session file locking. Its build needs explicit approval when using pnpm; the [CI allowlist](.github/workflows/ci.yml) names this package individually and preserves strict build and release-age policies. No compatibility is claimed for the GitHub-only `0.1.3-alpha.1` release or untested newer alphas.
+
+On macOS, `0.1.3-alpha.2` also passed a separate local hoisted-host check, including the live doctor's HTML/JavaScript and cleanup probes. The pnpm 11 linked `dlx` layout can start through the official CLI but fail the isolated doctor's official-component resolution. Compare a separate local hoisted host in that case; do not delete the migration profile, inherit an arbitrary `NODE_PATH`, or disable package-manager checks.
 
 | Origin | What moves |
 | --- | --- |
