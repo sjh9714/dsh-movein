@@ -81,8 +81,9 @@ jobs:
           node-version: 22.19.0
           package-manager-cache: false
       - run: npm ci --ignore-scripts
-      - name: production dependency audit
+      - name: runtime and Git-source build dependency audit
         run: |
+          npm audit --audit-level=high
           npm audit --omit=dev --audit-level=high
           npm audit --omit=dev --audit-level=high --prefix packages/claude-to-opencode
 
