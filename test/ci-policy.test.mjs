@@ -21,4 +21,8 @@ const hosts = '0.1.0-rc.8, 0.1.1-rc.1, 0.1.1-rc.2, 0.1.2-alpha.3, 0.1.2-alpha.4,
 assert.equal(workflow.split(`dsh: [${hosts}]`).length - 1, 2);
 assert.match(workflow, /needs: \[test, platform-test, opencode-compat, security, codeql, dsh-boot-smoke, permissions-dsh-compat, movein-dsh-compat\]/);
 assert.doesNotMatch(workflow, /cat "\$RUNNER_TEMP\/dsh-web\.log"/);
+// Git-source installation runs prepare with development dependencies installed.
+// Keep the build graph in the audit gate as well as the published runtime graph.
+assert.match(workflow, /^\s+npm audit --audit-level=high$/m);
+assert.match(workflow, /^\s+npm audit --omit=dev --audit-level=high$/m);
 console.log('CI toolchain, reviewed build allowlist, age policy, and all host gates preserved.');
